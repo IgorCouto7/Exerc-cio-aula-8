@@ -1,0 +1,77 @@
+#define F_CPU 16000000UL
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+#include <stdint.h>
+
+volatile uint8_t esteira1 = 0b01001001;  // Estado inicial da primeira esteira (1 = defeito, 0 = normal)
+volatile uint8_t esteira2 = 0b00000000;  // Estado inicial da segunda esteira
+#define LED_VERMELHO (1 << PB0)
+#define LED_AMARELO  (1 << PB1)
+#define BOTAO_S1     (1 << PD2)  // INT0
+#define BOTAO_S2     (1 << PD3)  // PCINT19 (Port D pino 3)
+
+void moveEsteira1(void);
+void moveEsteira2(void);
+
+int main(void) {
+    DDRB |= LED_VERMELHO | LED_AMARELO;  // LEDs como saída
+    DDRD &= ~(BOTAO_S1 | BOTAO_S2);      // Botões como entrada
+    PORTD |= BOTAO_S1 | BOTAO_S2;        // Pull-up interno
+
+    // Configura interrupção externa INT0 (alta prioridade)
+    EICRA |= (1 << ISC01) | (1 << ISC00); // Subida no PD2
+    EIMSK |= (1 << INT0);
+
+    // Configura interrupção de mudança 
+    PCICR |= (1 << PCIE2);    // Habilita interrupção no grupo PCINT
+    PCMSK2 |= (1 << PCINT19); // Habilita interrupção no PD3
+
+    sei(); // Habilita interrupções globais
+
+    while (1) {
+        // Loop principal vazio
+    }
+}
+
+
+ISR(INT0_vect) {
+    moveEsteira1();
+}
+
+ISR(PCINT2_vect) {
+    // Verifica se o botão S2 foi pressionado (nível baixo)
+    if (!(PIND & BOTAO_S2)) {
+        moveEsteira2();
+    }
+}
+
+void moveEsteira1(void) {
+    // Verifica se a última peça da esteira1 é defeituosa
+    if (esteira1 & 0b10000000) {
+        PORTB |= LED_VERMELHO; // Acende LED vermelho
+        esteira2 = (esteira2 << 1) | 1; // Adiciona defeituosa à esteira2
+    } else {
+        PORTB &= ~LED_VERMELHO; // Apaga LED vermelho
+        esteira2 = (esteira2 << 1); // Move normal pra esteira2
+    }
+
+    // Move esteira1 para a direita (desloca bits)
+    esteira1 <<= 1;
+    _delay_ms(200);
+}
+
+//
+void moveEsteira2(void) {
+    // Move esteira2 para a direita
+    esteira2 <<= 1;
+
+    // Verifica se a primeira posição (bit mais à esquerda) é defeituosa
+    if (esteira2 & 0b10000000) {
+        PORTB |= LED_AMARELO; // Acende LED amarelo
+    } else {
+        PORTB &= ~LED_AMARELO; // Apaga LED amarelo
+    }
+
+    _delay_ms(200);
+}
